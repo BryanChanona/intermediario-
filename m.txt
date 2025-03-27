@@ -1,0 +1,141 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gorilla/websocket"
+)
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for development
+	},
+}
+
+// ClientManager keeps track of connected WebSocket clients
+type ClientManager struct {
+	clients map[*websocket.Conn]bool
+	mu      sync.Mutex
+}
+
+var manager = ClientManager{
+	clients: make(map[*websocket.Conn]bool),
+}
+
+func (cm *ClientManager) addClient(conn *websocket.Conn) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.clients[conn] = true
+}
+
+func (cm *ClientManager) removeClient(conn *websocket.Conn) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	delete(cm.clients, conn)
+}
+
+func (cm *ClientManager) broadcast(message interface{}) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	jsonMsg, err := json.Marshal(message)
+	if err != nil {
+		log.Println("Error marshaling message:", err)
+		return
+	}
+
+	// Send the message to all connected WebSocket clients
+	for client := range cm.clients {
+		err := client.WriteMessage(websocket.TextMessage, jsonMsg)
+		if err != nil {
+			log.Println("Error sending message to client:", err)
+			client.Close()
+			delete(cm.clients, client)
+		}
+	}
+}
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("WebSocket upgrade failed:", err)
+		return
+	}
+	defer conn.Close()
+
+	manager.addClient(conn)
+	defer manager.removeClient(conn)
+
+	// Keep connection alive
+	for {
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+	}
+}
+
+// MQTT message handler
+var messageHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	payloadStr := string(msg.Payload())
+	
+	// Convert the message to JSON
+	message := map[string]interface{}{
+		"topic":   msg.Topic(),
+		"message": payloadStr,
+		"time":    time.Now().Format(time.RFC3339),
+	}
+
+	// Broadcast to all WebSocket clients
+	manager.broadcast(message)
+	
+	fmt.Printf("Mensaje recibido en [%s]: %s\n", msg.Topic(), payloadStr)
+}
+
+func main() {
+	// Setup MQTT client
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker("tcp://3.234.181.19:1883")
+	opts.SetClientID("mi-consumidor")
+	opts.SetDefaultPublishHandler(messageHandler)
+	opts.SetUsername("carlos")
+	opts.SetPassword("carlos")
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatal(token.Error())
+	}
+
+	// Suscripción a múltiples tópicos
+	topics := []string{
+		"esp32.temperatura",
+		"esp32.bpm",
+		"esp32.bpm2",
+		"esp32.spo2",
+	}
+
+	for _, topic := range topics {
+		if token := client.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
+			log.Fatal(token.Error())
+		}
+		fmt.Println("Suscrito al tópico:", topic)
+	}
+
+	// Setup WebSocket server
+	http.HandleFunc("/ws", wsHandler)
+	go func() {
+		log.Println("WebSocket server starting on :8080")
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatal("WebSocket server failed:", err)
+		}
+	}()
+
+	// Keep the main goroutine alive
+	select {}
+}
