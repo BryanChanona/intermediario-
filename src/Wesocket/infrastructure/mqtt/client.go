@@ -35,14 +35,14 @@ var messageHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Messa
 	var data map[string]interface{}
 
 	if payload.Spo2 != 0 { // Si hay un valor de SPO2, se enviará a la ruta de oxígeno
-		apiURL = "http://34.231.97.110:8081/oxygen/"
+		apiURL = "http://3.217.180.71:8081/oxygen/"
 		data = map[string]interface{}{
 			"id_user":  payload.IdUser,
 			"registeredMeasure": payload.Spo2,
 			"id_device":    payload.IdDevice,	
 		}
 	} else if payload.Bpm != 0 { // Si hay un valor de BPM, se enviará a la ruta de frecuencia cardíaca
-		apiURL = "http://34.231.97.110:8081/heartRate/"
+		apiURL = "http://3.217.180.71:8081/heartRate/"
 		data = map[string]interface{}{
 			"id_user":  payload.IdUser,
 			"registeredMeasure": payload.Bpm,
@@ -50,14 +50,14 @@ var messageHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Messa
 		}
 	}else if payload.Bpm2 != 0 {
 		
-		apiURL = "http://34.231.97.110:8081/heartRate/"
+		apiURL = "http://3.217.180.71:8081/heartRate/"
 		data = map[string]interface{}{
 			"id_user":  payload.IdUser,
 			"registeredMeasure": payload.Bpm,
 			"id_device":    payload.IdDevice,
 		}	
 	} else if payload.Temperatura != 0 { // Si hay un valor de temperatura, se enviará a la ruta de temperatura
-		apiURL = "http://34.231.97.110:8081/temperature/"
+		apiURL = "http://3.217.180.71:8081/temperature/"
 		data = map[string]interface{}{
 			"id_user":  payload.IdUser,
 			"registeredMeasure": payload.Temperatura,
@@ -96,7 +96,7 @@ var messageHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Messa
 // Iniciar la conexión MQTT y suscribirse a tópicos
 func StartMQTTClient() {
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker("tcp://3.234.181.19:1883")
+	opts.AddBroker("tcp://3.224.198.206:1883")
 	opts.SetClientID("mi-consumidor")
 	opts.SetDefaultPublishHandler(messageHandler)
 	opts.SetUsername("carlos")
